@@ -201,7 +201,7 @@ unsigned char do_physics(){
 			pool_balls[i].pos_y += sign_shift_round8(pool_balls[i].vel_y);
 
 			if(((pre_pos_x&0x8000) != (pool_balls[i].pos_x&0x8000)) || (pool_balls[i].pos_x >= 32000) || (pool_balls[i].pos_x <= 768)){
-				if(pre_pos_y <= (4<<8) || pre_pos_y >= (61<<8)){
+				if(pre_pos_y <= (5<<8) || pre_pos_y >= (60<<8)){
 					pool_balls[i].sunk = 1;
 				} else {
 					pool_balls[i].pos_x = pre_pos_x;
@@ -209,7 +209,7 @@ unsigned char do_physics(){
 				}
 			}
 			if(((pre_pos_y&0x8000) != (pool_balls[i].pos_y&0x8000)) || (pool_balls[i].pos_y >= 16000) || (pool_balls[i].pos_y <= 768)){
-				if(pre_pos_x <= (4<<8) || (pre_pos_x >= (60<<8) && pre_pos_x <= (68<<8)) || pre_pos_x >= (124<<8)){
+				if(pre_pos_x <= (5<<8) || (pre_pos_x >= (60<<8) && pre_pos_x <= (68<<8)) || pre_pos_x >= (123<<8)){
 					pool_balls[i].sunk = 1;
 				} else {
 					pool_balls[i].pos_y = pre_pos_y;

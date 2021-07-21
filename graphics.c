@@ -265,9 +265,11 @@ uint16_t get_first_collision_time(uint16_t ax, uint16_t ay, uint16_t rx, uint16_
 	uint32_t t32;
 
 	for(i = 0; i < NUM_BALLS - 1; i++){
-		t32 = get_collision_time(ax, ay, pool_balls[i].pos_x, pool_balls[i].pos_y, rx, ry);
-		if(t32 > 0 && t32 < output){
-			output = t32;
+		if(!pool_balls[i].sunk){
+			t32 = get_collision_time(ax, ay, pool_balls[i].pos_x, pool_balls[i].pos_y, rx, ry);
+			if(t32 > 0 && t32 < output){
+				output = t32;
+			}
 		}
 	}
 
