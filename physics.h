@@ -1,5 +1,7 @@
 #include <tigcclib.h>
 
+#define FRICTION ((uint32_t) 1<<4)
+
 #define NUM_BALLS 16
 #define CUE_BALL_ID 15
 
@@ -24,6 +26,7 @@ extern pool_ball pool_balls[NUM_BALLS];
 unsigned char do_physics();
 
 uint32_t sign_extend(uint16_t x);
+uint32_t int_sqrt(uint32_t s);
 
 uint32_t sign_shift_round8(uint32_t x);
 uint32_t int_sqrt(uint32_t s);

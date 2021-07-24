@@ -5,8 +5,6 @@
 
 #include "physics.h"
 
-#define FRICTION ((uint32_t) 1<<4)
-
 pool_ball pool_balls[NUM_BALLS];
 
 uint32_t sign_extend(uint16_t x){

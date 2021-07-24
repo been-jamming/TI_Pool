@@ -4,11 +4,31 @@
 
 #define MAX_VELOCITY (512UL*256UL)
 
+static uint16_t shot_positions_x[6] = {
+	0x0000,
+	0x0000,
+	0x4000,
+	0x4000,
+	0x7FFF,
+	0x7FFF
+};
+
+static uint16_t shot_positions_y[6] = {
+	0x0000,
+	0x4000,
+	0x0000,
+	0x4000,
+	0x0000,
+	0x4000
+};
+
 static unsigned char check_other_collisions(unsigned char exception_id, uint32_t ax, uint32_t ay, uint32_t rx, uint32_t ry, uint32_t *norm_squared){
 	uint32_t a;
 	uint32_t b;
 	uint32_t c;
 	uint32_t discriminant;
+	uint32_t diff_x;
+	uint32_t diff_y;
 	int i;
 
 	for(i = 0; i < NUM_BALLS; i++){
@@ -37,7 +57,7 @@ static unsigned char check_other_collisions(unsigned char exception_id, uint32_t
 	return 0;
 }
 
-int ai_get_shot_recursive(uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint32_t direc_y, uint32_t vel_squared, int depth, uint32_t *new_pos_x, uint32_t *new_pos_y, uint32_t *new_direc_x, uint32_t *new_direc_y, uint32_t *new_vel_squared){
+int ai_get_shot_recursive(uint32_t ball_mask, uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint32_t direc_y, uint32_t vel_squared, int depth, uint32_t *new_pos_x, uint32_t *new_pos_y, uint32_t *new_direc_x, uint32_t *new_direc_y, uint32_t *new_vel_squared){
 	int i;
 	int test_depth;
 	unsigned char path_found = 0;
@@ -71,7 +91,7 @@ int ai_get_shot_recursive(uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint
 
 	//First we check the cue ball
 	for(i = NUM_BALLS - 1; i >= 0; i--){
-		if(pool_balls[i].sunk){
+		if(pool_balls[i].sunk || ((1U<<i)&ball_mask)){
 			continue;
 		}
 		next_pos_x = sign_extend(pool_balls[i].pos_x)<<8;
@@ -85,7 +105,7 @@ int ai_get_shot_recursive(uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint
 		if(check_other_collisions(i, next_pos_x, next_pos_y, rx, ry, &norm_squared)){
 			continue;
 		}
-		norm = intsqrt(norm_squared);
+		norm = int_sqrt(norm_squared);
 		if(!norm){
 			return 0;
 		}
@@ -117,7 +137,7 @@ int ai_get_shot_recursive(uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint
 
 			return 1;
 		} else {
-			test_depth = ai_get_shot(next_pos_x, next_pos_y, normed_x<<8, normed_y<<8, new_vel, depth - 1, &test_new_pos_x, &test_new_pos_y, &test_new_direc_x, &test_new_direc_y, &test_new_vel_squared);
+			test_depth = ai_get_shot_recursive(ball_mask | (1U<<i), next_pos_x, next_pos_y, normed_x<<8, normed_y<<8, new_vel, depth - 1, &test_new_pos_x, &test_new_pos_y, &test_new_direc_x, &test_new_direc_y, &test_new_vel_squared);
 			if(test_depth && (test_depth < depth - 1 || (test_depth == depth - 1 && test_new_vel_squared < *new_vel_squared))){
 				depth = test_depth + 1;
 				*new_pos_x = test_new_pos_x;
@@ -135,5 +155,64 @@ int ai_get_shot_recursive(uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint
 	} else {
 		return depth;
 	}
+}
+
+unsigned char ai_get_best_shot(uint32_t *direc_x, uint32_t *direc_y, uint32_t *vel_squared, int max_depth, int *depth){
+	int i;
+	int j;
+	int result_depth;
+	unsigned char output = 0;
+	uint32_t pos_x;
+	uint32_t pos_y;
+	uint32_t req_direc_x;
+	uint32_t req_direc_y;
+	uint32_t squared_norm;
+	uint16_t norm;
+	uint32_t normed_direc_x;
+	uint32_t normed_direc_y;
+	uint32_t req_vel_squared;
+
+	uint32_t result_pos_x;
+	uint32_t result_pos_y;
+	uint32_t result_direc_x;
+	uint32_t result_direc_y;
+	uint32_t result_vel_squared;
+
+	*vel_squared = MAX_VELOCITY;
+	*depth = max_depth;
+	*direc_x = 0x10000;
+	*direc_y = 0;
+
+	for(i = 0; i < NUM_BALLS - 1; i++){
+		for(j = 0; j < 6; j++){
+			pos_x = sign_extend(pool_balls[i].pos_x)<<8;
+			pos_y = sign_extend(pool_balls[i].pos_y)<<8;
+			req_direc_x = (sign_extend(shot_positions_x[j])<<8) - pos_x;
+			req_direc_y = (sign_extend(shot_positions_y[j])<<8) - pos_y;
+			squared_norm = sign_shift_round8(req_direc_x)*sign_shift_round8(req_direc_x) + sign_shift_round8(req_direc_y)*sign_shift_round8(req_direc_y);
+			norm = int_sqrt(squared_norm);
+			if(req_direc_x&0x80000000){
+				normed_direc_x = -((-req_direc_x)/norm);
+			} else {
+				normed_direc_x = req_direc_x/norm;
+			}
+			if(req_direc_y&0x80000000){
+				normed_direc_y = -((-req_direc_y)/norm);
+			} else {
+				normed_direc_y = req_direc_y/norm;
+			}
+			req_vel_squared = 2*FRICTION*norm;
+			result_depth = ai_get_shot_recursive(0, pos_x, pos_y, normed_direc_x, normed_direc_y, req_vel_squared, max_depth, &result_pos_x, &result_pos_y, &result_direc_x, &result_direc_y, &result_vel_squared);
+			if(result_depth < max_depth || (result_depth == max_depth && result_vel_squared < *vel_squared)){
+				max_depth = result_depth;
+				*direc_x = result_direc_x;
+				*direc_y = result_direc_y;
+				*depth = max_depth;
+				output = 1;
+			}
+		}
+	}
+
+	return output;
 }
 

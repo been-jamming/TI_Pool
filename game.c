@@ -5,6 +5,7 @@
 #include "extgraph.h"
 #include "physics.h"
 #include "graphics.h"
+#include "ai.h"
 
 volatile unsigned char quit;
 INT_HANDLER old_int_5;
@@ -104,6 +105,26 @@ void select_power(){
 	}
 }
 
+void do_ai_move(){
+	uint32_t direc_x;
+	uint32_t direc_y;
+	uint32_t vel_squared;
+	uint16_t vel;
+	int depth;
+	unsigned char result;
+
+	result = ai_get_best_shot(&direc_x, &direc_y, &vel_squared, 2, &depth);
+	vel = 512UL;
+	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+	PortSet(dark_plane, 239, 127);
+	printf("%d: %lx, %lx", result, direc_x, direc_y);
+	GrayDBufToggle();
+	ngetchx();
+	//vel = int_sqrt(vel_squared);
+	pool_balls[CUE_BALL_ID].vel_x += sign_shift_round8(direc_x)*vel;
+	pool_balls[CUE_BALL_ID].vel_y += sign_shift_round8(direc_y)*vel;
+}
+
 DEFINE_INT_HANDLER(update){
 	ExecuteHandler(old_int_5);
 	do_update = 1;
@@ -129,7 +150,7 @@ void initialize_balls(){
 
 	pool_balls[i].pos_x = 0x2000;
 	pool_balls[i].pos_y = 0x2000;
-	pool_balls[i].vel_x = 0;
+	pool_balls[i].vel_x = 512ULL*256;
 	pool_balls[i].vel_y = 0;
 	pool_balls[i].sunk = 0;
 	pool_balls[i].type = CUE_BALL;
@@ -174,10 +195,13 @@ void _main(){
 			GrayDBufToggle();
 
 			if(physics_result){
+				do_ai_move();
+				/*
 				select_cue_ball_path();
 				select_power();
 				pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
 				pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
+				*/
 			}
 		}
 	}
