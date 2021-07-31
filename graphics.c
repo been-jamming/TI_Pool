@@ -261,7 +261,6 @@ uint16_t get_collision_time(uint16_t ax, uint16_t ay, uint16_t px, uint16_t py, 
 uint16_t get_first_collision_time(uint16_t ax, uint16_t ay, uint16_t rx, uint16_t ry){
 	int i;
 	uint16_t output = -1;
-	uint16_t t;
 	uint32_t t32;
 
 	for(i = 0; i < NUM_BALLS - 1; i++){

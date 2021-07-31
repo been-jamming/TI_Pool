@@ -5,11 +5,19 @@
 
 #include "physics.h"
 
-pool_ball pool_balls[NUM_BALLS];
+pool_ball *pool_balls;
 
 uint32_t sign_extend(uint16_t x){
 	if(x&0x8000){
 		return 0xFFFF0000 | x;
+	}
+
+	return x;
+}
+
+uint64_t sign_extend64(uint32_t x){
+	if(x&0x80000000){
+		return 0xFFFFFFFF00000000ULL | x;
 	}
 
 	return x;
@@ -22,6 +30,22 @@ uint32_t sign_shift_round8(uint32_t x){
 		return (x>>8) | 0xFF000000;
 	} else {
 		return x>>8;
+	}
+}
+
+uint32_t sign_shift_round12(uint32_t x){
+	if(x&0x80000000){
+		return (x>>12) | 0xFFF00000;
+	} else {
+		return x>>12;
+	}
+}
+
+uint32_t sign_shift_round1(uint32_t x){
+	if(x&0x80000000){
+		return (x>>1) | 0x80000000;
+	} else {
+		return x>>1;
 	}
 }
 

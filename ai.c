@@ -22,197 +22,185 @@ static uint16_t shot_positions_y[6] = {
 	0x4000
 };
 
-static unsigned char check_other_collisions(unsigned char exception_id, uint32_t ax, uint32_t ay, uint32_t rx, uint32_t ry, uint32_t *norm_squared){
+unsigned char early_collision(int exception0, int exception1, uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint32_t direc_y, uint32_t *a_out){
+	int i;
+	uint32_t diff_x;
+	uint32_t diff_y;
 	uint32_t a;
 	uint32_t b;
 	uint32_t c;
-	uint32_t discriminant;
-	uint32_t diff_x;
-	uint32_t diff_y;
-	int i;
+	uint64_t disc;
 
+	a = sign_shift_round8(direc_x)*sign_shift_round8(direc_x) + sign_shift_round8(direc_y)*sign_shift_round8(direc_y);
+	*a_out = a;
 	for(i = 0; i < NUM_BALLS; i++){
-		if(i == exception_id){
+		if(i == exception0 || i == exception1 || pool_balls[i].sunk){
 			continue;
 		}
-		diff_x = sign_extend(pool_balls[i].pos_x) - ax;
-		diff_y = sign_extend(pool_balls[i].pos_y) - ay;
-		a = ((uint32_t) (sign_shift_round8(rx)*sign_shift_round8(rx))) + ((uint32_t) (sign_shift_round8(ry)*sign_shift_round8(ry)));
-		b = (((uint32_t) (sign_shift_round8(diff_x)*sign_shift_round8(rx))) + ((uint32_t) (sign_shift_round8(diff_y)*sign_shift_round8(ry))))<<1;
-		if(b&0x80000000){
+
+		diff_x = pos_x - (sign_extend(pool_balls[i].pos_x)<<8);
+		diff_y = pos_y - (sign_extend(pool_balls[i].pos_y)<<8);
+
+		b = 2*(sign_shift_round8(direc_x)*sign_shift_round8(diff_x) + sign_shift_round8(direc_y)*sign_shift_round8(diff_y));
+		c = sign_shift_round8(diff_x)*sign_shift_round8(diff_x) + sign_shift_round8(diff_y)*sign_shift_round8(diff_y) - (36UL<<16);
+		disc = sign_extend64(b)*sign_extend64(b) - 4*sign_extend64(a)*sign_extend64(c);
+
+		if(disc&0x8000000000000000ULL){
 			continue;
 		}
-		c = ((uint32_t) (sign_shift_round8(diff_x)*sign_shift_round8(diff_x))) + ((uint32_t) (sign_shift_round8(diff_y)*sign_shift_round8(diff_y))) - ((uint32_t) 36<<16);
-		if((a&0x80000000) == ((a - b + c)&0x80000000) && (a&0x80000000) != ((b - (a<<1))&0x80000000)){
-			continue;
+
+		if((a + b + c)&0x80000000){
+			return 1;
 		}
-		discriminant = ((uint32_t) (sign_shift_round8(b)*sign_shift_round8(b))) - (((uint32_t) (sign_shift_round8(a)*sign_shift_round8(c)))<<2);
-		if(discriminant&0x80000000){
-			continue;
+
+		if((b&0x80000000) && (!((2*a + b)&0x80000000))){
+			return 1;
 		}
-		return 1;
 	}
 
-	*norm_squared = a;
 	return 0;
 }
 
-int ai_get_shot_recursive(uint32_t ball_mask, uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint32_t direc_y, uint32_t vel_squared, int depth, uint32_t *new_pos_x, uint32_t *new_pos_y, uint32_t *new_direc_x, uint32_t *new_direc_y, uint32_t *new_vel_squared){
+void ai_get_shot_recursive(uint16_t balls_mask, int depth, uint32_t pos_x, uint32_t pos_y, uint32_t direc_x, uint32_t direc_y, uint32_t vel_squared, int ball, int *out_depth, uint32_t *out_direc_x, uint32_t *out_direc_y, uint32_t *out_vel_squared){
 	int i;
-	int test_depth;
-	unsigned char path_found = 0;
 	uint32_t intersect_x;
 	uint32_t intersect_y;
-	uint32_t next_pos_x;
-	uint32_t next_pos_y;
-	uint32_t rx;
-	uint32_t ry;
-	uint32_t norm_squared;
-	uint32_t norm;
-	uint32_t normed_x;
-	uint32_t normed_y;
+	uint32_t new_direc_x;
+	uint32_t new_direc_y;
+	uint32_t new_vel_squared;
+	int test_depth;
+	uint32_t test_direc_x;
+	uint32_t test_direc_y;
+	uint32_t test_vel_squared;
+	uint32_t dist;
 	uint32_t dot;
-	uint32_t new_vel;
+	unsigned char found = 0;
 
-	uint32_t test_new_pos_x;
-	uint32_t test_new_pos_y;
-	uint32_t test_new_direc_x;
-	uint32_t test_new_direc_y;
-	uint32_t test_new_vel_squared;
+	*out_depth = 100;
+	*out_vel_squared = 0xFFFFFFFF;
 
 	if(!depth){
-		return 0;
+		*out_depth = -1;
+		return;
 	}
-
-	*new_vel_squared = UINT32_MAX;
 
 	intersect_x = pos_x - 6*direc_x;
 	intersect_y = pos_y - 6*direc_y;
 
-	//First we check the cue ball
-	for(i = NUM_BALLS - 1; i >= 0; i--){
-		if(pool_balls[i].sunk || ((1U<<i)&ball_mask)){
+	for(i = CUE_BALL_ID; i >= 0; i--){
+		if((balls_mask&(1U<<i)) || pool_balls[i].sunk){
 			continue;
 		}
-		next_pos_x = sign_extend(pool_balls[i].pos_x)<<8;
-		next_pos_y = sign_extend(pool_balls[i].pos_y)<<8;
-		rx = intersect_x - next_pos_x;
-		ry = intersect_y - next_pos_y;
-		dot = sign_shift_round8(rx)*sign_shift_round8(direc_x) + sign_shift_round8(ry)*sign_shift_round8(direc_y);
-		if(dot&0x80000000){
+
+		new_direc_x = intersect_x - (sign_extend(pool_balls[i].pos_x)<<8);
+		new_direc_y = intersect_y - (sign_extend(pool_balls[i].pos_y)<<8);
+
+		if((sign_shift_round8(new_direc_x)*sign_shift_round8(direc_x) + sign_shift_round8(new_direc_y)*sign_shift_round8(direc_y))&0x80000000){
 			continue;
 		}
-		if(check_other_collisions(i, next_pos_x, next_pos_y, rx, ry, &norm_squared)){
+		if(early_collision(i, ball, sign_extend(pool_balls[i].pos_x)<<8, sign_extend(pool_balls[i].pos_y)<<8, new_direc_x, new_direc_y, &dist)){
 			continue;
 		}
-		norm = int_sqrt(norm_squared);
-		if(!norm){
-			return 0;
+		dist = int_sqrt(dist);
+
+		if(!dist){
+			continue;
 		}
-		if(rx&0x80000000){
-			normed_x = -((-rx)/norm);
+
+		if(new_direc_x&0x80000000){
+			new_direc_x = -(((uint32_t) -new_direc_x)/dist);
 		} else {
-			normed_x = rx/norm;
+			new_direc_x /= dist;
 		}
-		if(ry&0x80000000){
-			normed_y = -((-ry)/norm);
+
+		if(new_direc_y&0x80000000){
+			new_direc_y = -(((uint32_t) -new_direc_y)/dist);
 		} else {
-			normed_y = ry/norm;
+			new_direc_y /= dist;
 		}
-		dot = normed_x*direc_x + normed_y*direc_y;
-		dot = sign_shift_round8(dot)*sign_shift_round8(dot);
-		if(!dot){
-			return 0;
+
+		dot = new_direc_x*sign_shift_round8(direc_x) + new_direc_y*sign_shift_round8(direc_y);
+		if(!(dot&0xFFFFFF00)){
+			continue;
 		}
-		new_vel = ((vel_squared/dot)<<8) + 2*norm*FRICTION;
-		if(new_vel > MAX_VELOCITY){
+		new_vel_squared = (((vel_squared<<8)/(sign_shift_round8(dot)*sign_shift_round8(dot)))<<8) + FRICTION*(dist>>3);
+		if(new_vel_squared > (4UL<<16)){
 			continue;
 		}
 		if(i == CUE_BALL_ID){
-			*new_pos_x = next_pos_x;
-			*new_pos_y = next_pos_y;
-			*new_direc_x = normed_x<<8;
-			*new_direc_y = normed_y<<8;
-			*new_vel_squared = new_vel;
-
-			return 1;
+			*out_depth = 1;
+			*out_direc_x = new_direc_x<<8;
+			*out_direc_y = new_direc_y<<8;
+			*out_vel_squared = new_vel_squared;
+			return;
 		} else {
-			test_depth = ai_get_shot_recursive(ball_mask | (1U<<i), next_pos_x, next_pos_y, normed_x<<8, normed_y<<8, new_vel, depth - 1, &test_new_pos_x, &test_new_pos_y, &test_new_direc_x, &test_new_direc_y, &test_new_vel_squared);
-			if(test_depth && (test_depth < depth - 1 || (test_depth == depth - 1 && test_new_vel_squared < *new_vel_squared))){
-				depth = test_depth + 1;
-				*new_pos_x = test_new_pos_x;
-				*new_pos_y = test_new_pos_y;
-				*new_direc_x = test_new_direc_x;
-				*new_direc_y = test_new_direc_y;
-				*new_vel_squared = test_new_vel_squared;
-				path_found = 1;
+			ai_get_shot_recursive(balls_mask | (1U<<i), depth - 1, sign_extend(pool_balls[i].pos_x)<<8, sign_extend(pool_balls[i].pos_y)<<8, new_direc_x<<8, new_direc_y<<8, new_vel_squared, i, &test_depth, &test_direc_x, &test_direc_y, &test_vel_squared);
+			if(test_depth != -1 && (test_depth < *out_depth - 1 || (test_depth == *out_depth - 1 && test_vel_squared < *out_vel_squared))){
+				*out_depth = test_depth + 1;
+				*out_vel_squared = test_vel_squared;
+				*out_direc_x = test_direc_x;
+				*out_direc_y = test_direc_y;
+				found = 1;
 			}
 		}
 	}
 
-	if(!path_found){
-		return 0;
-	} else {
-		return depth;
+	if(!found){
+		*out_depth = -1;
 	}
 }
 
-unsigned char ai_get_best_shot(uint32_t *direc_x, uint32_t *direc_y, uint32_t *vel_squared, int max_depth, int *depth){
+void ai_get_best_shot(uint16_t targets, int *out_depth, uint32_t *out_direc_x, uint32_t *out_direc_y, uint32_t *out_vel_squared){
+	int test_depth;
+	uint32_t test_direc_x;
+	uint32_t test_direc_y;
+	uint32_t test_vel_squared;
+	uint32_t direc_x;
+	uint32_t direc_y;
+	uint32_t dist;
+
 	int i;
 	int j;
-	int result_depth;
-	unsigned char output = 0;
-	uint32_t pos_x;
-	uint32_t pos_y;
-	uint32_t req_direc_x;
-	uint32_t req_direc_y;
-	uint32_t squared_norm;
-	uint16_t norm;
-	uint32_t normed_direc_x;
-	uint32_t normed_direc_y;
-	uint32_t req_vel_squared;
 
-	uint32_t result_pos_x;
-	uint32_t result_pos_y;
-	uint32_t result_direc_x;
-	uint32_t result_direc_y;
-	uint32_t result_vel_squared;
+	*out_depth = 4;
+	*out_direc_x = rand()<<1;
+	*out_direc_y = rand()<<1;
+	*out_vel_squared = 1024UL<<10;
 
-	*vel_squared = MAX_VELOCITY;
-	*depth = max_depth;
-	*direc_x = 0x10000;
-	*direc_y = 0;
-
-	for(i = 0; i < NUM_BALLS - 1; i++){
-		for(j = 0; j < 6; j++){
-			pos_x = sign_extend(pool_balls[i].pos_x)<<8;
-			pos_y = sign_extend(pool_balls[i].pos_y)<<8;
-			req_direc_x = (sign_extend(shot_positions_x[j])<<8) - pos_x;
-			req_direc_y = (sign_extend(shot_positions_y[j])<<8) - pos_y;
-			squared_norm = sign_shift_round8(req_direc_x)*sign_shift_round8(req_direc_x) + sign_shift_round8(req_direc_y)*sign_shift_round8(req_direc_y);
-			norm = int_sqrt(squared_norm);
-			if(req_direc_x&0x80000000){
-				normed_direc_x = -((-req_direc_x)/norm);
-			} else {
-				normed_direc_x = req_direc_x/norm;
+	for(j = 0; j < 6; j++){
+		for(i = 0; i < CUE_BALL_ID; i++){
+			if(pool_balls[i].sunk || !(targets&(1U<<i))){
+				continue;
 			}
-			if(req_direc_y&0x80000000){
-				normed_direc_y = -((-req_direc_y)/norm);
-			} else {
-				normed_direc_y = req_direc_y/norm;
+
+			direc_x = (sign_extend(shot_positions_x[j])<<8) - (sign_extend(pool_balls[i].pos_x)<<8);
+			direc_y = (sign_extend(shot_positions_y[j])<<8) - (sign_extend(pool_balls[i].pos_y)<<8);
+			if(early_collision(i, -1, sign_extend(pool_balls[i].pos_x)<<8, sign_extend(pool_balls[i].pos_y)<<8, direc_x, direc_y, &dist)){
+				continue;
 			}
-			req_vel_squared = 2*FRICTION*norm;
-			result_depth = ai_get_shot_recursive(0, pos_x, pos_y, normed_direc_x, normed_direc_y, req_vel_squared, max_depth, &result_pos_x, &result_pos_y, &result_direc_x, &result_direc_y, &result_vel_squared);
-			if(result_depth < max_depth || (result_depth == max_depth && result_vel_squared < *vel_squared)){
-				max_depth = result_depth;
-				*direc_x = result_direc_x;
-				*direc_y = result_direc_y;
-				*depth = max_depth;
-				output = 1;
+			dist = int_sqrt(dist);
+			if(!dist){
+				continue;
+			}
+			if(direc_x&0x80000000){
+				direc_x = -(((uint32_t) -direc_x)/dist);
+			} else {
+				direc_x /= dist;
+			}
+
+			if(direc_y&0x80000000){
+				direc_y = -(((uint32_t) -direc_y)/dist);
+			} else {
+				direc_y /= dist;
+			}
+			ai_get_shot_recursive(1U<<i, 4, sign_extend(pool_balls[i].pos_x)<<8, sign_extend(pool_balls[i].pos_y)<<8, direc_x<<8, direc_y<<8, FRICTION*(dist>>3) + 0x0800, i, &test_depth, &test_direc_x, &test_direc_y, &test_vel_squared);
+			if(test_depth != -1 && (test_depth < *out_depth || (test_depth == *out_depth && test_vel_squared < *out_vel_squared))){
+				*out_depth = test_depth;
+				*out_vel_squared = test_vel_squared;
+				*out_direc_x = test_direc_x;
+				*out_direc_y = test_direc_y;
 			}
 		}
 	}
-
-	return output;
 }
 

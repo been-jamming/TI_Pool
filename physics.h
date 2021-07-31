@@ -21,14 +21,24 @@ typedef struct{
 	unsigned char sunk;
 } pool_ball;
 
-extern pool_ball pool_balls[NUM_BALLS];
+struct game_state{
+	pool_ball balls[NUM_BALLS];
+	unsigned char turn;
+	unsigned char player0_human;
+	unsigned char player1_human;
+};
+
+extern struct game_state global_game_state;
+extern pool_ball *pool_balls;
 
 unsigned char do_physics();
 
 uint32_t sign_extend(uint16_t x);
+uint64_t sign_extend64(uint32_t x);
 uint32_t int_sqrt(uint32_t s);
 
 uint32_t sign_shift_round8(uint32_t x);
+uint32_t sign_shift_round12(uint32_t x);
 uint32_t int_sqrt(uint32_t s);
 
 extern uint8_t sin_table[256];
