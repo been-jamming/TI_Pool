@@ -388,7 +388,7 @@ void do_main_menu(){
 				pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
 				pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
 			}
-			return;
+			break;
 		} else if(selection == 1){
 			save_name = do_text_entry("Enter Save Name");
 			if(save_name){
