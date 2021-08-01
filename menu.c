@@ -51,6 +51,7 @@ int do_menu(char *title, char **items, unsigned int num_items){
 
         menu_select = 0;
         menu_max = num_items - 1;
+	GKeyFlush();
 
 	while(key != KEY_ENTER && key != KEY_ESC){
 		light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);

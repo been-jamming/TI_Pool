@@ -205,6 +205,7 @@ unsigned char do_physics(){
 	uint16_t pre_pos_x;
 	uint16_t pre_pos_y;
 	unsigned char output = 1;
+	unsigned char sunk;
 
 	for(i = 1; i < NUM_BALLS; i++){
 		for(j = 0; j < i; j++){
@@ -216,6 +217,8 @@ unsigned char do_physics(){
 
 	for(i = 0; i < NUM_BALLS; i++){
 		if(!pool_balls[i].sunk){
+			sunk = 0;
+
 			//Bounce on overflow of pos_x and pos_y
 			pre_pos_x = pool_balls[i].pos_x;
 			pre_pos_y = pool_balls[i].pos_y;
@@ -225,6 +228,7 @@ unsigned char do_physics(){
 			if(((pre_pos_x&0x8000) != (pool_balls[i].pos_x&0x8000)) || (pool_balls[i].pos_x >= 32000) || (pool_balls[i].pos_x <= 768)){
 				if(pre_pos_y <= (5<<8) || pre_pos_y >= (60<<8)){
 					pool_balls[i].sunk = 1;
+					sunk = 1;
 				} else {
 					pool_balls[i].pos_x = pre_pos_x;
 					pool_balls[i].vel_x = (~pool_balls[i].vel_x) + 1;
@@ -233,6 +237,7 @@ unsigned char do_physics(){
 			if(((pre_pos_y&0x8000) != (pool_balls[i].pos_y&0x8000)) || (pool_balls[i].pos_y >= 16000) || (pool_balls[i].pos_y <= 768)){
 				if(pre_pos_x <= (5<<8) || (pre_pos_x >= (60<<8) && pre_pos_x <= (68<<8)) || pre_pos_x >= (123<<8)){
 					pool_balls[i].sunk = 1;
+					sunk = 1;
 				} else {
 					pool_balls[i].pos_y = pre_pos_y;
 					pool_balls[i].vel_y = (~pool_balls[i].vel_y) + 1;
@@ -241,6 +246,27 @@ unsigned char do_physics(){
 			pool_ball_handle_friction(i);
 			if(pool_balls[i].vel_x || pool_balls[i].vel_y){
 				output = 0;
+			}
+
+			if(sunk){
+				if(!global_game_state.turn && global_game_state.player0_targets == all_targets){
+					if((1U<<i)&stripes_targets){
+						global_game_state.player0_targets = stripes_targets;
+						global_game_state.player1_targets = solids_targets;
+					} else if((1U<<i)&solids_targets){
+						global_game_state.player0_targets = solids_targets;
+						global_game_state.player1_targets = stripes_targets;
+					}
+				}
+				if(global_game_state.turn && global_game_state.player1_targets == all_targets){
+					if((1U<<i)&stripes_targets){
+						global_game_state.player1_targets = stripes_targets;
+						global_game_state.player0_targets = solids_targets;
+					} else if((1U<<i)&solids_targets){
+						global_game_state.player1_targets = solids_targets;
+						global_game_state.player0_targets = stripes_targets;
+					}
+				}
 			}
 		}
 	}

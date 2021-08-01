@@ -167,6 +167,17 @@ void draw_balls(){
 	}
 }
 
+void clear_top(){
+	light_plane = GrayDBufGetActivePlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetActivePlane(DARK_PLANE);
+	FastFilledRect_Erase_R(light_plane, 0, 0, 159, 9);
+	FastFilledRect_Erase_R(dark_plane, 0, 0, 159, 9);
+	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+	FastFilledRect_Erase_R(light_plane, 0, 0, 159, 9);
+	FastFilledRect_Erase_R(dark_plane, 0, 0, 159, 9);
+}
+
 void draw_table(){
 	FastOutlineRect_R(light_plane, 8, 10, 152, 91, A_NORMAL);
 	FastOutlineRect_R(dark_plane, 8, 10, 152, 91, A_NORMAL);

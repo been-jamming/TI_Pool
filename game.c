@@ -20,8 +20,7 @@ volatile unsigned char do_update;
 uint16_t global_angle;
 unsigned char global_power;
 
-uint16_t player0_targets;
-uint16_t player1_targets;
+uint16_t all_targets = 0x7FEF;
 uint16_t ball8_target = 0;
 uint16_t stripes_targets = 0;
 uint16_t solids_targets = 0;
@@ -118,14 +117,14 @@ void select_power(){
 	}
 }
 
-void do_ai_move(){
+void do_ai_move(uint16_t targets){
 	uint32_t direc_x;
 	uint32_t direc_y;
 	uint32_t vel_squared;
 	uint16_t vel;
 	int depth;
 
-	ai_get_best_shot(0xFFFF, &depth, &direc_x, &direc_y, &vel_squared);
+	ai_get_best_shot(targets, &depth, &direc_x, &direc_y, &vel_squared);
 	vel = int_sqrt(vel_squared);
 	pool_balls[CUE_BALL_ID].vel_x += sign_shift_round8(direc_x)*vel;
 	pool_balls[CUE_BALL_ID].vel_y += sign_shift_round8(direc_y)*vel;
@@ -175,6 +174,12 @@ void do_new_game_menu(){
 	int ai_level = 0;
 	int selection = -2;
 
+	global_game_state.player0_human = 1;
+	global_game_state.player1_human = 1;
+	global_game_state.player0_targets = all_targets;
+	global_game_state.player1_targets = all_targets;
+	global_game_state.ai_level = 0;
+	global_game_state.turn = 0;
 	while(selection != 3){
 		selection = do_menu("Game Setup", entries, sizeof(entries)/sizeof(entries[0]));
 		switch(selection){
@@ -182,30 +187,44 @@ void do_new_game_menu(){
 				player0_human = !player0_human;
 				if(player0_human){
 					entries[0] = "Player 1: human";
+					global_game_state.player0_human = 1;
 				} else {
 					entries[0] = "Player 1: CPU";
+					global_game_state.player0_human = 0;
 				}
 				break;
 			case 1:
 				player1_human = !player1_human;
 				if(player1_human){
 					entries[1] = "Player 2: human";
+					global_game_state.player1_human = 1;
 				} else {
 					entries[1] = "Player 2: CPU";
+					global_game_state.player1_human = 0;
 				}
 				break;
 			case 2:
 				ai_level = (ai_level + 1)%3;
 				if(ai_level == 0){
 					entries[2] = "AI level: 1";
+					global_game_state.ai_level = 0;
 				} else if(ai_level == 1){
 					entries[2] = "AI level: 2";
+					global_game_state.ai_level = 1;
 				} else {
 					entries[2] = "AI level: 3";
+					global_game_state.ai_level = 2;
 				}
 				break;
 		}
 	}
+}
+
+void display_win(unsigned char win_team){
+	char *messages[] = {"Player 1 Wins!", "Player 2 Wins!"};
+	char *entry = "Continue";
+
+	do_menu(messages[win_team], &entry, 1);
 }
 
 void do_main_menu(){
@@ -224,8 +243,70 @@ void do_main_menu(){
 	}
 }
 
+void center_text(int y, char *str){
+	int width;
+
+	width = DrawStrWidth(str, F_6x8);
+	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+	GrayDrawStr2B(80 - width/2, y, str, A_NORMAL, light_plane, dark_plane);
+	light_plane = GrayDBufGetActivePlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetActivePlane(DARK_PLANE);
+	GrayDrawStr2B(80 - width/2, y, str, A_NORMAL, light_plane, dark_plane);
+}
+
+uint16_t get_targets_mask(){
+	uint16_t output = 0;
+	int i;
+
+	for(i = 0; i < NUM_BALLS; i++){
+		if(pool_balls[i].sunk){
+			output |= 1U<<i;
+		}
+	}
+
+	return output;
+}
+
+void do_game_move(uint16_t targets){
+	clear_top();
+	FontSetSys(F_6x8);
+	if(global_game_state.turn == 0){
+		if(global_game_state.player0_targets == all_targets){
+			center_text(1, "Player 1");
+		} else if(global_game_state.player0_targets == stripes_targets){
+			center_text(1, "Player 1: stripes");
+		} else if(global_game_state.player0_targets == solids_targets){
+			center_text(1, "Player 1: solids");
+		} else if(global_game_state.player0_targets == ball8_target){
+			center_text(1, "Player 1: 8 ball");
+		}
+	} else {
+		if(global_game_state.player1_targets == all_targets){
+			center_text(2, "Player 2");
+		} else if(global_game_state.player1_targets == stripes_targets){
+			center_text(2, "Player 2: stripes");
+		} else if(global_game_state.player1_targets == solids_targets){
+			center_text(2, "Player 2: solids");
+		} else if(global_game_state.player1_targets == ball8_target){
+			center_text(2, "Player 2: 8 ball");
+		}
+	}
+	if((global_game_state.turn == 0 && global_game_state.player0_human) || (global_game_state.turn == 1 && global_game_state.player1_human)){
+		select_cue_ball_path();
+		select_power();
+		pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
+		pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
+	} else {
+		do_ai_move(targets);
+	}
+}
+
 void _main(){
 	unsigned char physics_result;
+	uint16_t targets;
+	uint16_t prev_targets_mask = 0xFFFF;
+	uint16_t targets_mask;
 
 	pool_balls = global_game_state.balls;
 	randomize();
@@ -265,6 +346,9 @@ void _main(){
 			if(do_update){
 				do_update = 0;
 				if(_keytest(RR_ESC)){
+					while(_keytest(RR_ESC)){
+						//pass
+					}
 					break;
 				}
 				light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
@@ -276,13 +360,39 @@ void _main(){
 				GrayDBufToggle();
 
 				if(physics_result){
-					do_ai_move();
-					/*
-					select_cue_ball_path();
-					select_power();
-					pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
-					pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
-					*/
+					targets_mask = get_targets_mask();
+					if(global_game_state.turn){
+						targets = global_game_state.player1_targets;
+					} else {
+						targets = global_game_state.player0_targets;
+					}
+					if(targets != ball8_target && pool_balls[EIGHT_BALL_ID].sunk){
+						display_win(!global_game_state.turn);
+						break;
+					} else if(targets == ball8_target && pool_balls[EIGHT_BALL_ID].sunk && !pool_balls[CUE_BALL_ID].sunk){
+						display_win(global_game_state.turn);
+						break;
+					} else if(targets == ball8_target && pool_balls[EIGHT_BALL_ID].sunk && pool_balls[CUE_BALL_ID].sunk){
+						display_win(!global_game_state.turn);
+						break;
+					}
+
+					if(!(targets_mask^prev_targets_mask) || ((targets_mask^prev_targets_mask)&~targets)){
+						global_game_state.turn = !global_game_state.turn;
+					}
+					if(global_game_state.turn){
+						targets = global_game_state.player1_targets;
+						if(!(targets&targets_mask)){
+							global_game_state.player1_targets = ball8_target;
+						}
+					} else {
+						targets = global_game_state.player0_targets;
+						if(!(targets&targets_mask)){
+							global_game_state.player0_targets = ball8_target;
+						}
+					}
+					do_game_move(targets);
+					prev_targets_mask = targets_mask;
 				}
 			}
 		}

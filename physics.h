@@ -4,6 +4,7 @@
 
 #define NUM_BALLS 16
 #define CUE_BALL_ID 15
+#define EIGHT_BALL_ID 4
 
 typedef enum{
 	CUE_BALL = 1,
@@ -26,9 +27,15 @@ struct game_state{
 	unsigned char turn;
 	unsigned char player0_human;
 	unsigned char player1_human;
+	unsigned char ai_level;
+	uint16_t player0_targets;
+	uint16_t player1_targets;
 };
 
 extern struct game_state global_game_state;
+extern uint16_t all_targets;
+extern uint16_t stripes_targets;
+extern uint16_t solids_targets;
 extern pool_ball *pool_balls;
 
 unsigned char do_physics();

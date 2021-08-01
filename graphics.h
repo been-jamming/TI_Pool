@@ -22,6 +22,7 @@ uint16_t sin_func(uint16_t angle);
 uint16_t cos_func(uint16_t angle);
 void draw_ball(int x, int y, ball_type type);
 void draw_balls();
+void clear_top();
 void draw_table();
 void clear_table();
 uint16_t get_collision_time(uint16_t ax, uint16_t ay, uint16_t px, uint16_t py, uint16_t rx, uint16_t ry);
