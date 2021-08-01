@@ -271,14 +271,6 @@ unsigned char do_physics(){
 		}
 	}
 
-	if(pool_balls[CUE_BALL_ID].sunk){
-		pool_balls[CUE_BALL_ID].pos_x = 0x2000;
-		pool_balls[CUE_BALL_ID].pos_y = 0x2000;
-		pool_balls[CUE_BALL_ID].vel_x = 0;
-		pool_balls[CUE_BALL_ID].vel_y = 0;
-		pool_balls[CUE_BALL_ID].sunk = 0;
-	}
-
 	return output;
 }
 

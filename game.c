@@ -25,6 +25,32 @@ uint16_t ball8_target = 0;
 uint16_t stripes_targets = 0;
 uint16_t solids_targets = 0;
 
+void clear_and_draw_table(){
+	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+	memset(light_plane, 0, LCD_SIZE);
+	memset(dark_plane, 0, LCD_SIZE);
+	draw_table(light_plane, dark_plane);
+	GrayDBufToggle();
+	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+	memset(light_plane, 0, LCD_SIZE);
+	memset(dark_plane, 0, LCD_SIZE);
+	draw_table(light_plane, dark_plane);
+}
+
+void center_text(int x, int y, char *str){
+	int width;
+
+	width = DrawStrWidth(str, F_6x8);
+	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+	GrayDrawStr2B(x - width/2, y, str, A_NORMAL, light_plane, dark_plane);
+	light_plane = GrayDBufGetActivePlane(LIGHT_PLANE);
+	dark_plane = GrayDBufGetActivePlane(DARK_PLANE);
+	GrayDrawStr2B(x - width/2, y, str, A_NORMAL, light_plane, dark_plane);
+}
+
 void select_cue_ball_path(){
 	unsigned char prev_f1_pressed = 0;
 	unsigned char f1_pressed;
@@ -91,6 +117,11 @@ void select_power(){
 	FastOutlineRect_R(light_plane, 2, 2, 34, 8, A_NORMAL);
 	FastOutlineRect_R(dark_plane, 2, 2, 34, 8, A_NORMAL);
 	global_power = 0;
+
+	while(_keytest(RR_ENTER)){
+		//pass
+	}
+
 	while(1){
 		if(do_update){
 			do_update = 0;
@@ -114,6 +145,101 @@ void select_power(){
 			draw_power_bar(global_power);
 			GrayDBufToggle();
 		}
+	}
+}
+
+void select_cue_ball_placement(){
+	int frame = 0;
+	int i = 0;
+	uint16_t diff_x;
+	uint16_t diff_y;
+	uint32_t dist;
+	char *message = "Redo Selection";
+
+	if((global_game_state.turn && global_game_state.player1_human) || (!global_game_state.turn && global_game_state.player0_human)){
+		clear_top();
+		center_text(80, 1, "Select cue ball placement");
+		pool_balls[CUE_BALL_ID].pos_x = 0x2000;
+		pool_balls[CUE_BALL_ID].pos_y = 0x2000;
+		pool_balls[CUE_BALL_ID].vel_x = 0;
+		pool_balls[CUE_BALL_ID].vel_y = 0;
+
+		while(1){
+			if(do_update){
+				do_update = 0;
+				frame = (frame + 1)%26;
+				if(_keytest(RR_ENTER)){
+					for(i = 0; i < CUE_BALL_ID; i++){
+						diff_x = pool_balls[i].pos_x - pool_balls[CUE_BALL_ID].pos_x;
+						diff_y = pool_balls[i].pos_y - pool_balls[CUE_BALL_ID].pos_y;
+						dist = sign_extend(diff_x)*sign_extend(diff_x) + sign_extend(diff_y)*sign_extend(diff_y);
+						if(dist < (36UL<<16)){
+							do_menu("Invalid Ball Placement", &message, 1);
+							while(_keytest(RR_ENTER)){
+								while(!do_update){
+									//pass
+								}
+								do_update = 0;
+							}
+							clear_and_draw_table();
+							center_text(80, 1, "Select cue ball placement");
+							break;
+						}
+					}
+					if(i == CUE_BALL_ID){
+						while(_keytest(RR_ENTER)){
+							while(!do_update){
+								//pass
+							}
+							do_update = 0;
+						}
+						break;
+					}
+				}
+
+				if(_keytest(RR_LEFT) && ((pool_balls[CUE_BALL_ID].pos_x>>8) > 3)){
+					pool_balls[CUE_BALL_ID].pos_x -= 256;
+				}
+				if(_keytest(RR_RIGHT) && (pool_balls[CUE_BALL_ID].pos_x < 0x7D00U)){
+					pool_balls[CUE_BALL_ID].pos_x += 256;
+				}
+				if(_keytest(RR_UP) && ((pool_balls[CUE_BALL_ID].pos_y>>8) > 3)){
+					pool_balls[CUE_BALL_ID].pos_y -= 256;
+				}
+				if(_keytest(RR_DOWN) && (pool_balls[CUE_BALL_ID].pos_y < 0x3D00U)){
+					pool_balls[CUE_BALL_ID].pos_y += 256;
+				}
+
+				light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
+				dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
+
+				clear_table();
+				draw_balls();
+
+				if(frame < 13){
+					draw_ball((pool_balls[CUE_BALL_ID].pos_x>>8) + 16, (pool_balls[CUE_BALL_ID].pos_y>>8) + 18, CUE_BALL);
+				}
+
+				GrayDBufToggle();
+			}
+		}
+		pool_balls[CUE_BALL_ID].sunk = 0;
+	} else {
+		pool_balls[CUE_BALL_ID].vel_x = 0;
+		pool_balls[CUE_BALL_ID].vel_y = 0;
+		do{
+			pool_balls[CUE_BALL_ID].pos_x = rand()%0x7D00U;
+			pool_balls[CUE_BALL_ID].pos_y = rand()%0x3D00U;
+			for(i = 0; i < CUE_BALL_ID; i++){
+				diff_x = pool_balls[i].pos_x - pool_balls[CUE_BALL_ID].pos_x;
+				diff_y = pool_balls[i].pos_y - pool_balls[CUE_BALL_ID].pos_y;
+				dist = sign_extend(diff_x)*sign_extend(diff_x) + sign_extend(diff_y)*sign_extend(diff_y);
+				if(dist < (36UL<<16)){
+					break;
+				}
+			}
+		} while(i < CUE_BALL_ID);
+		pool_balls[CUE_BALL_ID].sunk = 0;
 	}
 }
 
@@ -161,8 +287,13 @@ void initialize_balls(){
 
 	pool_balls[i].pos_x = 0x2000;
 	pool_balls[i].pos_y = 0x2000;
-	pool_balls[i].vel_x = 512ULL*256;
-	pool_balls[i].vel_y = rand();
+	if(!global_game_state.player0_human){
+		pool_balls[i].vel_x = 512ULL*256;
+		pool_balls[i].vel_y = rand()/2;
+	} else {
+		pool_balls[i].vel_x = 0;
+		pool_balls[i].vel_y = 0;
+	}
 	pool_balls[i].sunk = 0;
 	pool_balls[i].type = CUE_BALL;
 }
@@ -243,24 +374,12 @@ void do_main_menu(){
 	}
 }
 
-void center_text(int y, char *str){
-	int width;
-
-	width = DrawStrWidth(str, F_6x8);
-	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
-	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
-	GrayDrawStr2B(80 - width/2, y, str, A_NORMAL, light_plane, dark_plane);
-	light_plane = GrayDBufGetActivePlane(LIGHT_PLANE);
-	dark_plane = GrayDBufGetActivePlane(DARK_PLANE);
-	GrayDrawStr2B(80 - width/2, y, str, A_NORMAL, light_plane, dark_plane);
-}
-
 uint16_t get_targets_mask(){
 	uint16_t output = 0;
 	int i;
 
 	for(i = 0; i < NUM_BALLS; i++){
-		if(pool_balls[i].sunk){
+		if(!pool_balls[i].sunk){
 			output |= 1U<<i;
 		}
 	}
@@ -273,23 +392,23 @@ void do_game_move(uint16_t targets){
 	FontSetSys(F_6x8);
 	if(global_game_state.turn == 0){
 		if(global_game_state.player0_targets == all_targets){
-			center_text(1, "Player 1");
+			center_text(90, 1, "Player 1");
 		} else if(global_game_state.player0_targets == stripes_targets){
-			center_text(1, "Player 1: stripes");
+			center_text(90, 1, "Player 1: stripes");
 		} else if(global_game_state.player0_targets == solids_targets){
-			center_text(1, "Player 1: solids");
+			center_text(90, 1, "Player 1: solids");
 		} else if(global_game_state.player0_targets == ball8_target){
-			center_text(1, "Player 1: 8 ball");
+			center_text(90, 1, "Player 1: 8 ball");
 		}
 	} else {
 		if(global_game_state.player1_targets == all_targets){
-			center_text(2, "Player 2");
+			center_text(90, 1, "Player 2");
 		} else if(global_game_state.player1_targets == stripes_targets){
-			center_text(2, "Player 2: stripes");
+			center_text(90, 1, "Player 2: stripes");
 		} else if(global_game_state.player1_targets == solids_targets){
-			center_text(2, "Player 2: solids");
+			center_text(90, 1, "Player 2: solids");
 		} else if(global_game_state.player1_targets == ball8_target){
-			center_text(2, "Player 2: 8 ball");
+			center_text(90, 1, "Player 2: 8 ball");
 		}
 	}
 	if((global_game_state.turn == 0 && global_game_state.player0_human) || (global_game_state.turn == 1 && global_game_state.player1_human)){
@@ -305,7 +424,7 @@ void do_game_move(uint16_t targets){
 void _main(){
 	unsigned char physics_result;
 	uint16_t targets;
-	uint16_t prev_targets_mask = 0xFFFF;
+	uint16_t prev_targets_mask;
 	uint16_t targets_mask;
 
 	pool_balls = global_game_state.balls;
@@ -317,37 +436,31 @@ void _main(){
 	FontSetSys(F_4x6);
 	GrayOn();
 	GrayDBufInit(gray_buffer);
-	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
-	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
-	memset(light_plane, 0, LCD_SIZE);
-	memset(dark_plane, 0, LCD_SIZE);
-	draw_table(light_plane, dark_plane);
-	GrayDBufToggle();
-	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
-	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
-	memset(light_plane, 0, LCD_SIZE);
-	memset(dark_plane, 0, LCD_SIZE);
-	draw_table(light_plane, dark_plane);
+	clear_and_draw_table();
 	initialize_balls();
 	old_int_5 = GetIntVec(AUTO_INT_5);
 	SetIntVec(AUTO_INT_5, update);
 	while(1){
+		clear_and_draw_table();
 		do_main_menu();
-		light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
-		dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
-		GrayClearScreen2B_R(light_plane, dark_plane);
-		draw_table(light_plane, dark_plane);
-		light_plane = GrayDBufGetActivePlane(LIGHT_PLANE);
-		dark_plane = GrayDBufGetActivePlane(DARK_PLANE);
-		GrayClearScreen2B_R(light_plane, dark_plane);
-		draw_table(light_plane, dark_plane);
+		clear_and_draw_table();
 		initialize_balls();
+		prev_targets_mask = 0xFFFF;
+		if(global_game_state.player0_human){
+			select_cue_ball_path();
+			select_power();
+			pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
+			pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
+		}
 		while(1){
 			if(do_update){
 				do_update = 0;
 				if(_keytest(RR_ESC)){
 					while(_keytest(RR_ESC)){
-						//pass
+						while(!do_update){
+							//pass
+						}
+						do_update = 0;
 					}
 					break;
 				}
@@ -377,6 +490,11 @@ void _main(){
 						break;
 					}
 
+					if(pool_balls[CUE_BALL_ID].sunk){
+						select_cue_ball_placement();
+						targets_mask = get_targets_mask();
+					}
+
 					if(!(targets_mask^prev_targets_mask) || ((targets_mask^prev_targets_mask)&~targets)){
 						global_game_state.turn = !global_game_state.turn;
 					}
@@ -391,6 +509,7 @@ void _main(){
 							global_game_state.player0_targets = ball8_target;
 						}
 					}
+
 					do_game_move(targets);
 					prev_targets_mask = targets_mask;
 				}
