@@ -380,7 +380,7 @@ void do_main_menu(){
 		if(selection == 0){
 			do_new_game_menu();
 			initialize_balls();
-			global_game_state.prev_targets_mask = all_targets;
+			global_game_state.prev_targets_mask = 0xFFFF;
 			clear_and_draw_table();
 			if(global_game_state.player0_human){
 				select_cue_ball_path();
