@@ -30,6 +30,7 @@ struct game_state{
 	unsigned char ai_level;
 	uint16_t player0_targets;
 	uint16_t player1_targets;
+	uint16_t prev_targets_mask;
 };
 
 extern struct game_state global_game_state;

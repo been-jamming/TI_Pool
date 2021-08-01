@@ -39,16 +39,24 @@ void clear_and_draw_table(){
 	draw_table(light_plane, dark_plane);
 }
 
-void center_text(int x, int y, char *str){
+void center_text(int x, int y, char *str, int font){
 	int width;
 
-	width = DrawStrWidth(str, F_6x8);
+	width = DrawStrWidth(str, font);
 	light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
 	dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
 	GrayDrawStr2B(x - width/2, y, str, A_NORMAL, light_plane, dark_plane);
 	light_plane = GrayDBufGetActivePlane(LIGHT_PLANE);
 	dark_plane = GrayDBufGetActivePlane(DARK_PLANE);
 	GrayDrawStr2B(x - width/2, y, str, A_NORMAL, light_plane, dark_plane);
+}
+
+void draw_title(){
+	FontSetSys(F_8x10);
+	center_text(80, 22, "TI Pool", F_8x10);
+	FontSetSys(F_4x6);
+	center_text(40, 93, "Ben Jones - 7/17/2021", F_4x6);
+	FontSetSys(F_6x8);
 }
 
 void select_cue_ball_path(){
@@ -156,9 +164,10 @@ void select_cue_ball_placement(){
 	uint32_t dist;
 	char *message = "Redo Selection";
 
+	FontSetSys(F_6x8);
 	if((global_game_state.turn && global_game_state.player1_human) || (!global_game_state.turn && global_game_state.player0_human)){
 		clear_top();
-		center_text(80, 1, "Select cue ball placement");
+		center_text(80, 1, "Select cue ball placement", F_6x8);
 		pool_balls[CUE_BALL_ID].pos_x = 0x2000;
 		pool_balls[CUE_BALL_ID].pos_y = 0x2000;
 		pool_balls[CUE_BALL_ID].vel_x = 0;
@@ -182,7 +191,7 @@ void select_cue_ball_placement(){
 								do_update = 0;
 							}
 							clear_and_draw_table();
-							center_text(80, 1, "Select cue ball placement");
+							center_text(80, 1, "Select cue ball placement", F_6x8);
 							break;
 						}
 					}
@@ -228,8 +237,8 @@ void select_cue_ball_placement(){
 		pool_balls[CUE_BALL_ID].vel_x = 0;
 		pool_balls[CUE_BALL_ID].vel_y = 0;
 		do{
-			pool_balls[CUE_BALL_ID].pos_x = rand()%0x7D00U;
-			pool_balls[CUE_BALL_ID].pos_y = rand()%0x3D00U;
+			pool_balls[CUE_BALL_ID].pos_x = rand()%0x7A00U + 0x0300;
+			pool_balls[CUE_BALL_ID].pos_y = rand()%0x3A00U + 0x0300;
 			for(i = 0; i < CUE_BALL_ID; i++){
 				diff_x = pool_balls[i].pos_x - pool_balls[CUE_BALL_ID].pos_x;
 				diff_y = pool_balls[i].pos_y - pool_balls[CUE_BALL_ID].pos_y;
@@ -359,19 +368,88 @@ void display_win(unsigned char win_team){
 }
 
 void do_main_menu(){
-	char *main_entries[] = {"New Game", "Exit"};
+	char *main_entries[] = {"New Game", "Load Game", "Exit"};
 	int selection;
+	char *continue_text = "Continue";
+	char *save_name;
+	FILE *save_file;
 
-	selection = do_menu("Select Option", main_entries, sizeof(main_entries)/sizeof(main_entries[0]));
-	if(selection == 0){
-		do_new_game_menu();
-	} else if(selection == 1){
-		SetIntVec(AUTO_INT_5, old_int_5);
-		GrayOff();
-		free(tmp_plane);
-		free(gray_buffer);
-		exit(0);
+	draw_title();
+	do{
+		selection = do_menu("Select Option", main_entries, sizeof(main_entries)/sizeof(main_entries[0]));
+		if(selection == 0){
+			do_new_game_menu();
+			initialize_balls();
+			global_game_state.prev_targets_mask = all_targets;
+			clear_and_draw_table();
+			if(global_game_state.player0_human){
+				select_cue_ball_path();
+				select_power();
+				pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
+				pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
+			}
+			return;
+		} else if(selection == 1){
+			save_name = do_text_entry("Enter Save Name");
+			if(save_name){
+				save_file = fopen(save_name, "r");
+				if(!save_file){
+					do_menu("Failed to Open File", &continue_text, 1);
+					free(save_name);
+				} else {
+					fread(&global_game_state, 1, sizeof(global_game_state), save_file);
+					fclose(save_file);
+					free(save_name);
+					clear_and_draw_table();
+					break;
+				}
+			}
+		} else if(selection == 2){
+			SetIntVec(AUTO_INT_5, old_int_5);
+			GrayOff();
+			free(tmp_plane);
+			free(gray_buffer);
+			exit(0);
+		}
+	} while(selection == 1 || selection != -1);
+
+	while(_keytest(RR_ENTER)){
+		while(!do_update){
+			//pass
+		}
+		do_update = 0;
 	}
+}
+
+unsigned char do_pause_menu(){
+	char *pause_entries[] = {"Resume", "Save", "Exit"};
+	int selection;
+	char *save_name;
+	char *continue_text = "Continue";
+	FILE *save_file;
+
+	do{
+		selection = do_menu("Pause", pause_entries, sizeof(pause_entries)/sizeof(pause_entries[0]));
+		if(selection == 2){
+			clear_and_draw_table();
+			return 1;
+		} else if(selection == 1){
+			save_name = do_text_entry("Enter Save Name");
+			if(save_name){
+				save_file = fopen(save_name, "w");
+				if(!save_file){
+					do_menu("Failed to Save File", &continue_text, 1);
+					free(save_name);
+				}
+				fwrite(&global_game_state, sizeof(global_game_state), 1, save_file);
+				fclose(save_file);
+				free(save_name);
+			}
+		}
+	} while(selection != 0);
+
+	clear_and_draw_table();
+	draw_balls();
 }
 
 uint16_t get_targets_mask(){
@@ -392,23 +470,23 @@ void do_game_move(uint16_t targets){
 	FontSetSys(F_6x8);
 	if(global_game_state.turn == 0){
 		if(global_game_state.player0_targets == all_targets){
-			center_text(90, 1, "Player 1");
+			center_text(90, 1, "Player 1", F_6x8);
 		} else if(global_game_state.player0_targets == stripes_targets){
-			center_text(90, 1, "Player 1: stripes");
+			center_text(90, 1, "Player 1: stripes", F_6x8);
 		} else if(global_game_state.player0_targets == solids_targets){
-			center_text(90, 1, "Player 1: solids");
+			center_text(90, 1, "Player 1: solids", F_6x8);
 		} else if(global_game_state.player0_targets == ball8_target){
-			center_text(90, 1, "Player 1: 8 ball");
+			center_text(90, 1, "Player 1: 8 ball", F_6x8);
 		}
 	} else {
 		if(global_game_state.player1_targets == all_targets){
-			center_text(90, 1, "Player 2");
+			center_text(90, 1, "Player 2", F_6x8);
 		} else if(global_game_state.player1_targets == stripes_targets){
-			center_text(90, 1, "Player 2: stripes");
+			center_text(90, 1, "Player 2: stripes", F_6x8);
 		} else if(global_game_state.player1_targets == solids_targets){
-			center_text(90, 1, "Player 2: solids");
+			center_text(90, 1, "Player 2: solids", F_6x8);
 		} else if(global_game_state.player1_targets == ball8_target){
-			center_text(90, 1, "Player 2: 8 ball");
+			center_text(90, 1, "Player 2: 8 ball", F_6x8);
 		}
 	}
 	if((global_game_state.turn == 0 && global_game_state.player0_human) || (global_game_state.turn == 1 && global_game_state.player1_human)){
@@ -424,7 +502,6 @@ void do_game_move(uint16_t targets){
 void _main(){
 	unsigned char physics_result;
 	uint16_t targets;
-	uint16_t prev_targets_mask;
 	uint16_t targets_mask;
 
 	pool_balls = global_game_state.balls;
@@ -443,15 +520,6 @@ void _main(){
 	while(1){
 		clear_and_draw_table();
 		do_main_menu();
-		clear_and_draw_table();
-		initialize_balls();
-		prev_targets_mask = 0xFFFF;
-		if(global_game_state.player0_human){
-			select_cue_ball_path();
-			select_power();
-			pool_balls[NUM_BALLS - 1].vel_x += (uint32_t) global_power*16*sign_extend(cos_func(global_angle));
-			pool_balls[NUM_BALLS - 1].vel_y += (uint32_t) global_power*16*sign_extend(sin_func(global_angle));
-		}
 		while(1){
 			if(do_update){
 				do_update = 0;
@@ -462,7 +530,9 @@ void _main(){
 						}
 						do_update = 0;
 					}
-					break;
+					if(do_pause_menu()){
+						break;
+					}
 				}
 				light_plane = GrayDBufGetHiddenPlane(LIGHT_PLANE);
 				dark_plane = GrayDBufGetHiddenPlane(DARK_PLANE);
@@ -490,28 +560,31 @@ void _main(){
 						break;
 					}
 
+					if(!(targets_mask^global_game_state.prev_targets_mask) || ((targets_mask^global_game_state.prev_targets_mask)&~targets)){
+						global_game_state.turn = !global_game_state.turn;
+					}
+
 					if(pool_balls[CUE_BALL_ID].sunk){
 						select_cue_ball_placement();
 						targets_mask = get_targets_mask();
 					}
 
-					if(!(targets_mask^prev_targets_mask) || ((targets_mask^prev_targets_mask)&~targets)){
-						global_game_state.turn = !global_game_state.turn;
-					}
 					if(global_game_state.turn){
 						targets = global_game_state.player1_targets;
 						if(!(targets&targets_mask)){
 							global_game_state.player1_targets = ball8_target;
+							targets = ball8_target;
 						}
 					} else {
 						targets = global_game_state.player0_targets;
 						if(!(targets&targets_mask)){
 							global_game_state.player0_targets = ball8_target;
+							targets = ball8_target;
 						}
 					}
 
 					do_game_move(targets);
-					prev_targets_mask = targets_mask;
+					global_game_state.prev_targets_mask = targets_mask;
 				}
 			}
 		}

@@ -152,6 +152,7 @@ void ai_get_shot_recursive(uint16_t balls_mask, int depth, uint32_t pos_x, uint3
 
 void ai_get_best_shot(uint16_t targets, int *out_depth, uint32_t *out_direc_x, uint32_t *out_direc_y, uint32_t *out_vel_squared){
 	int test_depth;
+	int depth;
 	uint32_t test_direc_x;
 	uint32_t test_direc_y;
 	uint32_t test_vel_squared;
@@ -162,7 +163,14 @@ void ai_get_best_shot(uint16_t targets, int *out_depth, uint32_t *out_direc_x, u
 	int i;
 	int j;
 
-	*out_depth = 4;
+	if(global_game_state.ai_level == 0){
+		depth = 2;
+	} else if(global_game_state.ai_level == 1){
+		depth = 3;
+	} else {
+		depth = 5;
+	}
+	*out_depth = depth;
 	*out_direc_x = rand()<<1;
 	*out_direc_y = rand()<<1;
 	*out_vel_squared = 1024UL<<10;
@@ -193,7 +201,7 @@ void ai_get_best_shot(uint16_t targets, int *out_depth, uint32_t *out_direc_x, u
 			} else {
 				direc_y /= dist;
 			}
-			ai_get_shot_recursive(1U<<i, 4, sign_extend(pool_balls[i].pos_x)<<8, sign_extend(pool_balls[i].pos_y)<<8, direc_x<<8, direc_y<<8, FRICTION*(dist>>3) + 0x0800, i, &test_depth, &test_direc_x, &test_direc_y, &test_vel_squared);
+			ai_get_shot_recursive(1U<<i, depth, sign_extend(pool_balls[i].pos_x)<<8, sign_extend(pool_balls[i].pos_y)<<8, direc_x<<8, direc_y<<8, FRICTION*(dist>>3) + 0x0800, i, &test_depth, &test_direc_x, &test_direc_y, &test_vel_squared);
 			if(test_depth != -1 && (test_depth < *out_depth || (test_depth == *out_depth && test_vel_squared < *out_vel_squared))){
 				*out_depth = test_depth;
 				*out_vel_squared = test_vel_squared;
